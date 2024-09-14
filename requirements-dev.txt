@@ -1,2 +1,4 @@
 fastapi[all]
 pre-commit
+psycopg2
+sqlalchemy
