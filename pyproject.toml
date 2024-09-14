@@ -67,7 +67,7 @@ disable = [
 select = ["E", "F", "B", "ERA"]
 
 # Never enforce `E501` (line length violations).
-ignore = ["E501", "F401"]
+ignore = ["E501", "F401","B008","ERA001"]
 
 # Avoid trying to fix flake8-bugbear (`B`) violations.
 unfixable = ["B"]
