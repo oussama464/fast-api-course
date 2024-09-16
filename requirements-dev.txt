@@ -2,4 +2,5 @@ fastapi[all]
 passlib[bcrypt]
 pre-commit
 psycopg2
+pyjwt
 sqlalchemy
