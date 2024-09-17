@@ -20,7 +20,7 @@ async def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 
-@router.get("/{id}", response_model=schemas.UserOut)
+@router.get("/{id}", response_model=schemas.UserResponse)
 async def get_user(id: int, db: Session = Depends(get_db)):
     requested_user = db.query(models.User).filter(models.User.id == id).first()
     if not requested_user:

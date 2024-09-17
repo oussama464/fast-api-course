@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from pydantic import BaseModel, EmailStr
@@ -16,6 +18,8 @@ class PostCreate(PostBase):
 class Post(PostBase):
     id: int
     created_at: datetime
+    owner_id: int
+    owner: UserOut
     # class config:
     #     orm_mode = True
 
@@ -29,6 +33,10 @@ class UserOut(BaseModel):
     id: int
     email: str
     created_at: datetime
+
+
+class UserResponse(UserOut):
+    posts: list[Post] | None
 
 
 class UserLogin(BaseModel):
