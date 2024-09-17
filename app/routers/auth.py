@@ -16,9 +16,9 @@ async def login(user_credentials: OAuth2PasswordRequestForm = Depends(), db: Ses
 
     user = db.query(models.User).filter(models.User.email == user_credentials.username).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invaild credentials")
-    if not utils.verify_passowrd(user_credentials.password, user.password):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invalid credentials")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invaild credentials")
+    if not utils.verify_passowrd(user_credentials.password, user.password):  # type: ignore[arg-type]
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid credentials")
 
     access_token = oauth2.create_acess_token(data={"user_id": user.id})
 
