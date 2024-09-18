@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field
 
 
 class PostBase(BaseModel):
@@ -16,23 +16,31 @@ class PostCreate(PostBase):
 
 
 class Post(PostBase):
+    # model_config = ConfigDict(field={"likes": {"exclude": True}})
     id: int
     created_at: datetime
     owner_id: int
-    owner: UserOut
-    # class config:
-    #     orm_mode = True
+    owner: UserOutBase
+    likes: list[UserOutBase] = Field(exclude=True)
+
+    @computed_field(alias="total_vote_count")
+    def vote_count(self) -> int:
+        return len(self.likes)
+
+
+class UserOutBase(BaseModel):
+    id: int
+    email: str
+
+
+class UserOut(UserOutBase):
+    created_at: datetime
+    liked_posts: list[Post]
 
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-
-
-class UserOut(BaseModel):
-    id: int
-    email: str
-    created_at: datetime
 
 
 class UserResponse(UserOut):
@@ -51,3 +59,17 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     id: int | None
+
+
+class Vote(BaseModel):
+    post_id: int
+    dir: int = Field(
+        ...,
+        ge=0,
+        le=1,
+        description="a vote direction of 1 means we want to add a vote, a direction of 0 means we want to delete a vote",
+    )
+
+
+Post.model_rebuild()
+UserOut.model_rebuild()

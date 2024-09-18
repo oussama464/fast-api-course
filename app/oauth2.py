@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from turtle import settiltangle
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -7,11 +8,12 @@ from jwt.exceptions import InvalidTokenError, PyJWTError
 from sqlalchemy.orm import Session
 
 from . import models, schemas
+from .config import settings
 from .database import get_db
 
-SECRET_KEY = "0ec4b4c488b6b470cdbb326b7f651b8a43caf2c9b11eced50c2f7c1a3e5c85b2"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+SECRET_KEY = settings.secret_key
+ALGORITHM = settings.algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
@@ -55,9 +57,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         id: str = payload.get("user_id")
+
         if id is None:
             raise credentials_exception
-        token_data = schemas.TokenData(id=id)
+        token_data = schemas.TokenData(id=id)  # type: ignore[arg-type]
     except InvalidTokenError as e:
         raise credentials_exception from e
     user = db.query(models.User).filter(models.User.id == token_data.id).first()

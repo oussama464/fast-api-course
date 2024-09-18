@@ -8,14 +8,8 @@ router = APIRouter(prefix="/posts", tags=["posts"])
 
 
 @router.get("/", response_model=list[schemas.Post])
-async def get_posts(
-    db: Session = Depends(get_db),
-    user: schemas.UserOut = Depends(oauth2.get_current_active_user),
-    limit: int = 10,
-    skip: int = 0,
-    search: str | None = "",
-):
-    posts = db.query(models.Post).filter(models.Post.title.contains(search)).limit(limit).offset(skip).all()
+async def get_posts(db: Session = Depends(get_db), user: schemas.UserOut = Depends(oauth2.get_current_active_user)):
+    posts = db.query(models.Post).all()
     return posts
 
 
@@ -61,7 +55,7 @@ async def delete_post(
 
 
 @router.put("/{id}", response_model=schemas.Post)
-def update_post(
+async def update_post(
     id: int,
     new_post: schemas.PostCreate,
     db: Session = Depends(get_db),

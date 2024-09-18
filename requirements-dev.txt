@@ -2,5 +2,6 @@ fastapi[all]
 passlib[bcrypt]
 pre-commit
 psycopg2
+pydantic-settings
 pyjwt
 sqlalchemy
