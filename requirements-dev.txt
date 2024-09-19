@@ -1,3 +1,4 @@
+alembic
 fastapi[all]
 passlib[bcrypt]
 pre-commit

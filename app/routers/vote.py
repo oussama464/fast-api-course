@@ -1,5 +1,3 @@
-from statistics import mode
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -13,6 +11,12 @@ router = APIRouter(prefix="/vote", tags=["Vote"])
 async def vote(
     vote: schemas.Vote, db: Session = Depends(get_db), user: schemas.UserOut = Depends(oauth2.get_current_active_user)
 ):
+    post_query = db.query(models.Post).filter(models.Post.id == vote.post_id)
+    post_to_vote_on = post_query.first()
+    if not post_to_vote_on:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"post with id : {vote.post_id} was not found"
+        )
     vote_query = db.query(models.likes_table).filter(
         models.likes_table.c.post_id == vote.post_id, models.likes_table.c.user_id == user.id
     )  # type: ignore[attr-defined]
@@ -24,7 +28,6 @@ async def vote(
                 detail=f"user: {user.id} has already voted on post: {vote.post_id} ",
             )
 
-        # new_vote = models.likes_table(user_id=user.id, post_id=vote.post_id)  # type: ignore[operator]
         new_vote = models.likes_table.insert().values(user_id=user.id, post_id=vote.post_id)
         db.execute(new_vote)
         db.commit()
