@@ -38,6 +38,7 @@ class User(Base):
     email = Column(String, nullable=False, unique=True)
     password = Column(String, nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text("now()"))
+    phone_number = Column(String, nullable=False)  # to be deleted
     # one to many relationship to posts
     posts = relationship("Post", back_populates="owner")
     # association table
