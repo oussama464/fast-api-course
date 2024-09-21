@@ -2,17 +2,17 @@ version: '3.9'
 
 services:
 
-  postgres:
-    image: postgres
-    environment:
-      - POSTGRES_HOST=localhost
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password123
-      - POSTGRES_DB=fastapi
-    ports:
-      - "5432:5432"
-    volumes:
-      - data:/var/lib/postgresql/data
+  # postgres:
+  #   image: postgres
+  #   environment:
+  #     - POSTGRES_HOST=localhost
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=password123
+  #     - POSTGRES_DB=fastapi
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - data:/var/lib/postgresql/data
 
   dbeaver:
     image: dbeaver/cloudbeaver:latest
@@ -27,5 +27,5 @@ services:
 
 
 volumes:
-  data:
+  #data:
   dbeaver_data:
