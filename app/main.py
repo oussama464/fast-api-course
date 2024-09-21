@@ -7,7 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 # from .database import engine
 from .routers import auth, post, user, vote
 
-app = FastAPI()
+app = FastAPI(
+    title="bibiiiii❤️❤️❤️❤️❤️❤️❤️❤️❤️ ",
+    description="FECH TAAML BIBI ? ❤️",
+    version="0.0.1",
+)
 origins = ["*"]
 
 app.add_middleware(
