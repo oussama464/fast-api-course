@@ -8,8 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers import auth, post, user, vote
 
 app = FastAPI(
-    title="bibiiiii❤️❤️❤️❤️❤️❤️❤️❤️❤️ ",
-    description="FECH TAAML BIBI ? ❤️",
+    title="demo votes api",
+    description="learn difficult and on demand skills",
     version="0.0.1",
 )
 origins = ["*"]

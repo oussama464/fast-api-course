@@ -2,17 +2,23 @@ version: '3.9'
 
 services:
 
-  # postgres:
-  #   image: postgres
-  #   environment:
-  #     - POSTGRES_HOST=localhost
-  #     - POSTGRES_USER=postgres
-  #     - POSTGRES_PASSWORD=password123
-  #     - POSTGRES_DB=fastapi
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - data:/var/lib/postgresql/data
+  postgres:
+    image: postgres
+    environment:
+      - POSTGRES_HOST=${DATABASE_HOSTNAME}
+      - POSTGRES_USER=${DATABASE_USERNAME}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      - POSTGRES_DB=${DATABASE_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   dbeaver:
     image: dbeaver/cloudbeaver:latest
@@ -24,8 +30,24 @@ services:
       - CB_SERVER_NAME=dbeaver-cloud
     volumes:
       - dbeaver_data:/opt/dbeaver/conf
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  fastapi:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    volumes:
+      - ./:/usr/src/app:ro
+    command: ["uvicorn","app.main:app","--host","0.0.0.0","--port","5000","--reload"]
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 
 volumes:
-  #data:
+  data:
   dbeaver_data:
