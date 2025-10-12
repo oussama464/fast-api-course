@@ -1,155 +1,233 @@
-import argparse
-import logging
-import ssl
-import sys
-import time
-import xml.etree.ElementTree as eT
-from dataclasses import dataclass, field
+from parse_ddf import Schema , Column , SchemaValidationError
+import pytest
+def build_valid_schema(**overrides):
+    base = {
+        "version": 1,
+        "title": "My Schema",
+        "description": "optional",
+        "properties": {
+            "name": {"type": "string"},
+            "is_active": {"type": "boolean"},
+            "amount": {"type": "float"},
+            "created_date": {"type": "date"},
+            "event_date_time": {"type": "date-time"},
+            "count": {"type": "integer"},
+        },
+    }
+    base.update(overrides)
+    return base
+
+def test_schema_from_yaml_valid_minimal():
+    data = {
+        "version": 1,
+        "title": "X",
+        "properties": {"foo": {"type": "string"}},
+    }
+    s = Schema.from_yaml(data)
+    assert s.version == 1
+    assert s.title == "X"
+    assert isinstance(s.properties["foo"], Column)
+    assert s.properties["foo"].type == "string"
+    assert s.properties["foo"].description is None
+
+def test_unknown_top_level_keys_forbidden():
+    data = build_valid_schema(extra="nope")
+    with pytest.raises(SchemaValidationError) as e:
+        Schema.from_yaml(data)
+    assert "unknown top-level key" in str(e.value)
+
+
+@pytest.mark.parametrize("bad_name", ["BadName", "snake-Case", "9start", "UPPER", "mixed_Case"])
+def test_invalid_column_names_rejected(bad_name):
+    data = build_valid_schema()
+    data["properties"] = {bad_name: {"type": "string"}}
+    with pytest.raises(SchemaValidationError) as e:
+        Schema.from_yaml(data)
+    assert "invalid column name; must be lower_snake_case" in str(e.value)
+
+
+def test_column_forbids_extra_keys():
+    with pytest.raises(SchemaValidationError) as e:
+        Column.from_raw("foo", {"type": "string", "description": "ok", "extra": True})
+    assert "unknown key(s)" in str(e.value)
+
+def test_date_time_column_name_must_end_with_suffix():
+    with pytest.raises(SchemaValidationError) as e:
+        Column.from_raw("timestamp", {"type": "date-time"})
+    assert "must end with '_date_time'" in str(e.value)
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
+Strict YAML schema validator.
+
+Spec enforced:
+- Top level keys allowed: version, title, description, properties.
+- Required: version (int >=1), title (non-empty str), properties (mapping with >=1 entry).
+- description: optional str.
+- Column names: lower_snake_case: ^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$
+- Column object: keys allowed -> type (required), description (optional). No others.
+- type allowed: boolean, integer, float, date, date-time, string
+  (Explicitly reject: time, enum — marked “to be implemented”)
+- If type == date-time: column name must end with "_date_time"
+"""
+import re
+from dataclasses import dataclass, field ,asdict
 from pathlib import Path
 
-import httpx
+from typing import Self, Any
 
-# Default constants
-DEFAULT_CERT_PATH = Path(__file__).parent / 'images' / 'ca.pem'
-POLL_INTERVAL = 8  # seconds
-CIPHER = 'xxxx'
-BASE_URL = 'https://XXXXXXX'
-JOB_ID = 'XXXXXXXX'
+import yaml
+from pprint import pprint
 
 
-def _create_ssl_context(cert_path: Path) -> ssl.SSLContext:
-    """
-    Create and configure an SSL context for secure server authentication.
-    """
-    context = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
-    if hasattr(context, 'minimum_version'):
-        context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.load_verify_locations(cafile=str(cert_path))
-    context.set_ciphers(CIPHER)
-    return context
+# ----------------- dataclasses describing the expected structure -----------------
+
+ALLOWED_TOP_KEYS = {"version", "title", "description", "properties"}
+ALLOWED_TYPES = {"boolean", "integer", "float", "date", "date-time", "string"}
+RESERVED_NOT_IMPLEMENTED = {"time", "enum"}
+SNAKE_CASE_RE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 
 
-def _get_attribute_value(xml_text: str, attribute: str) -> str:
-    """
-    Extract the value of the given attribute from the first <execution> element in the XML.
-    """
-    root = eT.fromstring(xml_text)
-    elem = root.find('.//execution')
-    if elem is None or attribute not in elem.attrib:
-        raise DeploymentError(f"Missing <execution> element or '{attribute}' in response XML")
-    return elem.attrib[attribute]
-
-
-class DeploymentError(Exception):
-    """Custom exception for deployment-related errors."""
+class SchemaValidationError(Exception):
     pass
 
 
 @dataclass
-class DeploymentClient:
-    """
-    Client for triggering and monitoring Rundeck deployment jobs. Use as a context manager.
-    """
-    token: str
-    cert_path: Path = DEFAULT_CERT_PATH
-    client: httpx.Client = field(init=False)
+class Column:
+    type: str
+    description: str | None = None
 
-    def __post_init__(self):
-        ssl_context = _create_ssl_context(self.cert_path)
-        transport = httpx.HTTPTransport(verify=ssl_context)
-        self.client = httpx.Client(
-            transport=transport,
-            headers={
-                'X-Rundeck-Auth-Token': self.token,
-                'Content-Type': 'application/json',
-            },
-            http2=False,
-        )
+    @classmethod
+    def from_raw(cls,name: str, raw: Any) -> Self:
+        if not isinstance(raw, dict):
+            raise SchemaValidationError(
+                f"properties.{name}: must be a mapping with keys 'type' and optional 'description'."
+            )
 
-    def __enter__(self):
-        return self
+        # Forbid extra keys
+        extra = set(raw.keys()) - {"type", "description"}
+        if extra:
+            raise SchemaValidationError(
+                f"properties.{name}: unknown key(s): {', '.join(sorted(extra))}."
+            )
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.client.close()
+        # Required: type
+        t = raw.get("type")
+        if not isinstance(t, str):
+            raise SchemaValidationError(f"properties.{name}.type: must be a string.")
 
-    def trigger(self, tag: str) -> str:
-        """
-        Trigger the deployment job and return its execution ID.
-        """
-        url = f"{BASE_URL}/api/14/job/{JOB_ID}/run"
-        payload = {'options': {'ENV': 'int', 'VERSION': tag}}
+        # Reject reserved types
+        if t in RESERVED_NOT_IMPLEMENTED:
+            raise SchemaValidationError(
+                f"properties.{name}.type='{t}' is reserved and not implemented."
+            )
 
-        resp = self.client.post(url, json=payload)
-        resp.raise_for_status()
-        xml = resp.text
+        # Only allow current types
+        if t not in ALLOWED_TYPES:
+            allowed = ", ".join(sorted(ALLOWED_TYPES))
+            raise SchemaValidationError(
+                f"properties.{name}.type='{t}' is not allowed; allowed: {allowed}."
+            )
 
-        exec_id = _get_attribute_value(xml, 'id')
-        status = _get_attribute_value(xml, 'status')
-        if status != 'running':
-            raise DeploymentError(f"Job failed to start (status={status})")
+        # Optional description
+        desc = raw.get("description")
+        if desc is not None and not isinstance(desc, str):
+            raise SchemaValidationError(
+                f"properties.{name}.description: must be a string if provided."
+            )
 
-        logging.info(f"Job started, execution ID: {exec_id}")
-        return exec_id
-
-    def poll(self, execution_id: str) -> str:
-        """
-        Poll the execution status until it is no longer 'running'. Returns the final status.
-        """
-        url = f"{BASE_URL}/api/14/execution/{execution_id}"
-        while True:
-            time.sleep(POLL_INTERVAL)
-            resp = self.client.get(url)
-            resp.raise_for_status()
-            status = _get_attribute_value(resp.text, 'status')
-            logging.info(f"Status: {status}")
-            if status != 'running':
-                return status
-
-    def deploy(self, tag: str) -> str:
-        """
-        Full deploy flow: trigger + poll. Returns final status.
-        """
-        exec_id = self.trigger(tag)
-        return self.poll(exec_id)
+        # Naming rule for date-time columns
+        if t == "date-time":
+            if not name.endswith("_date_time"):
+                raise SchemaValidationError(
+                    f"properties.{name}: 'date-time' columns must end with '_date_time'."
+                )
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Trigger and monitor a Rundeck deployment job."
-    )
-    parser.add_argument('--token', required=True, help='Rundeck API token')
-    parser.add_argument('--tag', required=True, help='Version tag to deploy')
-    parser.add_argument(
-        '--cert-path', type=Path, default=DEFAULT_CERT_PATH,
-        help='Path to CA certificate'
-    )
-    return parser.parse_args()
+        return cls(type=t, description=desc)
 
 
-def main() -> int:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s"
-    )
-    args = parse_args()
+@dataclass
+class Schema:
+    version: int
+    title: str
+    description: str | None = None
+    properties: dict[str, Column] = field(default_factory=dict)
 
+    @classmethod
+    def from_yaml(cls,data: dict[str,Any]) -> Self:
+        # Root must be a mapping
+        if not isinstance(data, dict):
+            raise SchemaValidationError("root: document must be a YAML mapping/object.")
+
+        # Forbid unknown top-level keys
+        unknown = set(data.keys()) - ALLOWED_TOP_KEYS
+        if unknown:
+            raise SchemaValidationError(
+                f"root: unknown top-level key(s): {', '.join(sorted(unknown))}."
+            )
+
+        # Required fields
+        version = data.get("version")
+        if not isinstance(version, int) or version < 1:
+            raise SchemaValidationError("version: must be an integer >= 1.")
+
+        title = data.get("title")
+        if not isinstance(title, str) or not title.strip():
+            raise SchemaValidationError("title: must be a non-empty string.")
+
+        # Optional description
+        description = data.get("description")
+        if description is not None and not isinstance(description, str):
+            raise SchemaValidationError("description: must be a string if provided.")
+
+        # properties
+        props_raw = data.get("properties")
+        if not isinstance(props_raw, dict) or not props_raw:
+            raise SchemaValidationError(
+                "properties: must be a non-empty mapping of column_name -> {type, description?}."
+            )
+
+        props: dict[str, Column] = {}
+        for name, raw in props_raw.items():
+            # Column name must be lower_snake_case
+            if not isinstance(name, str) or not SNAKE_CASE_RE.match(name):
+                raise SchemaValidationError(
+                    f"properties.{name}: invalid column name; must be lower_snake_case."
+                )
+            props[name] = Column.from_raw(name, raw)
+
+        return cls(version=version, title=title, description=description, properties=props)
+
+
+
+def validate_file(path: Path) -> None:
     try:
-        with DeploymentClient(token=args.token, cert_path=args.cert_path) as client:
-            final_status = client.deploy(args.tag)
-
-        if final_status != 'succeeded':
-            logging.error(f"Deployment ended with status: {final_status}")
-            return 1
-
-        logging.info("Deployment succeeded.")
-        return 0
-
-    except Exception as e:
-        logging.exception("Deployment failed.", e)
-        return 1
+        with path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            pprint(data)
+        s = Schema.from_yaml(data)
+        pprint(s)
+        pprint(asdict(s))
+    except yaml.YAMLError as e:
+        raise SchemaValidationError(f"YAML parsing error: {e}") from e
 
 
-if __name__ == '__main__':
-    sys.exit(main())
+def main() -> None:
+    ddf_schema = Path(__file__).parent / "ddf.yaml"
+    validate_file(ddf_schema)
 
 
+if __name__ == "__main__":
+    main()
